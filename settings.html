@@ -5,37 +5,125 @@
   <meta charset="UTF-8">
   <style>
     body {
-      width: 400px;
-      padding: 20px;
       font-family: Arial, sans-serif;
       background-color: #f4f4f9;
       color: #333;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      min-height: 100vh;
     }
-    .container {
+    
+    .sidebar {
+      width: 250px;
       background-color: #fff;
-      padding: 20px;
-      border-radius: 8px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      border-right: 1px solid #e0e0e0;
+      box-shadow: 2px 0 10px rgba(0,0,0,0.05);
+      overflow-y: auto;
     }
-    h2 {
-      text-align: center;
+    
+    .sidebar-header {
+      padding: 20px 15px;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .sidebar-header h2 {
+      margin: 0;
+      font-size: 18px;
       color: #4285f4;
     }
+    
+    .providers-list {
+      list-style-type: none;
+      padding: 0;
+      margin: 0;
+    }
+    
+    .provider-item {
+      padding: 12px 15px;
+      border-bottom: 1px solid #f0f0f0;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    
+    .provider-item:hover {
+      background-color: #f8f9fa;
+    }
+    
+    .provider-item.active {
+      background-color: #e8f0fe;
+      border-left: 4px solid #4285f4;
+    }
+    
+    .provider-item .provider-name {
+      font-weight: 500;
+    }
+    
+    .provider-item .provider-desc {
+      font-size: 12px;
+      color: #666;
+      margin-top: 4px;
+    }
+    
+    .content {
+      flex: 1;
+      padding: 30px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    
+    .section {
+      background-color: #fff;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      padding: 25px;
+      margin-bottom: 20px;
+    }
+    
+    .section-header {
+      border-bottom: 1px solid #eee;
+      padding-bottom: 15px;
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .section-title {
+      font-size: 18px;
+      margin: 0;
+      color: #333;
+    }
+    
     .form-group {
       margin-bottom: 15px;
     }
+    
     label {
       display: block;
       margin-bottom: 5px;
       font-weight: bold;
     }
-    input[type="text"], input[type="url"] {
-      width: calc(100% - 22px);
+    
+    input[type="text"], input[type="url"], input[type="password"], select {
+      width: 100%;
       padding: 10px;
       border: 1px solid #ddd;
       border-radius: 4px;
       box-sizing: border-box;
     }
+    
+    .model-select {
+      margin-top: 15px;
+    }
+    
+    .buttons-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 20px;
+    }
+    
     button {
       background-color: #4285f4;
       color: white;
@@ -43,43 +131,147 @@
       padding: 10px 15px;
       border-radius: 4px;
       cursor: pointer;
-      font-size: 16px;
+      font-size: 14px;
       transition: background-color 0.3s ease;
     }
+    
     button:hover {
       background-color: #3367d6;
     }
+    
+    button.secondary {
+      background-color: #f0f0f0;
+      color: #333;
+    }
+    
+    button.secondary:hover {
+      background-color: #e0e0e0;
+    }
+    
     .status {
       margin-top: 15px;
       padding: 10px;
       border-radius: 4px;
       text-align: center;
     }
+    
     .success {
       background-color: #e8f5e9;
       color: #2e7d32;
     }
+    
     .error {
       background-color: #ffebee;
       color: #c62828;
     }
+    
+    .provider-config {
+      display: none;
+    }
+    
+    .provider-config.active {
+      display: block;
+    }
+    
+    .provider-logo {
+      width: 36px;
+      height: 36px;
+      margin-right: 10px;
+      object-fit: contain;
+    }
+    
+    .provider-header {
+      display: flex;
+      align-items: center;
+    }
+    
+    .comfyui-section {
+      margin-bottom: 30px;
+    }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h2>扩展设置</h2>
-    
-    <div class="form-group">
-      <label for="endpoint">ComfyUI API 端点:</label>
-      <input type="url" id="endpoint" placeholder="例如: https://your-comfyui-api.com">
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <h2>设置</h2>
     </div>
     
-    <div class="form-group">
-      <label for="workflowId">ComfyUI 工作流 ID:</label>
-      <input type="text" id="workflowId" placeholder="您的 ComfyUI 工作流部署 ID">
+    <ul class="providers-list">
+      <li class="provider-item active" data-provider="comfyui">
+        <div class="provider-name">ComfyUI</div>
+        <div class="provider-desc">ComfyUI API设置</div>
+      </li>
+      <li class="provider-item" data-provider="providers">
+        <div class="provider-name">文生图服务</div>
+        <div class="provider-desc">选择并配置文生图服务商</div>
+      </li>
+    </ul>
+  </div>
+  
+  <div class="content">
+    <div id="comfyui-config" class="provider-config active">
+      <div class="section comfyui-section">
+        <div class="section-header">
+          <h3 class="section-title">ComfyUI API设置</h3>
+        </div>
+        
+        <div class="form-group">
+          <label for="endpoint">ComfyUI API 端点:</label>
+          <input type="url" id="endpoint" placeholder="例如: https://your-comfyui-api.com">
+        </div>
+        
+        <div class="form-group">
+          <label for="workflowId">ComfyUI 工作流 ID:</label>
+          <input type="text" id="workflowId" placeholder="您的 ComfyUI 工作流部署 ID">
+        </div>
+      </div>
+      
+      <div class="buttons-row">
+        <button id="saveComfySettings">保存设置</button>
+      </div>
     </div>
     
-    <button id="saveSettings">保存设置</button>
+    <div id="providers-config" class="provider-config">
+      <div class="section">
+        <div class="section-header">
+          <h3 class="section-title">选择文生图服务商</h3>
+        </div>
+        
+        <div class="form-group">
+          <label for="selected-provider">选择服务商：</label>
+          <select id="selected-provider">
+            <!-- 会通过JavaScript动态填充 -->
+          </select>
+        </div>
+      </div>
+      
+      <div id="provider-settings-container" class="section">
+        <div class="section-header">
+          <h3 class="section-title" id="provider-settings-title">服务商设置</h3>
+        </div>
+        
+        <div class="form-group">
+          <label for="api-key">API密钥:</label>
+          <input type="password" id="api-key" placeholder="输入您的API密钥">
+        </div>
+        
+        <div class="form-group model-select">
+          <label for="model-selection">选择模型:</label>
+          <select id="model-selection">
+            <!-- 会通过JavaScript动态填充 -->
+          </select>
+        </div>
+        
+        <div id="additional-settings">
+          <!-- 会根据选择的服务商动态添加额外设置 -->
+        </div>
+      </div>
+      
+      <div class="buttons-row">
+        <button id="testProvider" class="secondary">测试连接</button>
+        <button id="saveProviderSettings">保存设置</button>
+      </div>
+    </div>
     
     <div id="status" class="status"></div>
   </div>
