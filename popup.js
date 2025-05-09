@@ -169,12 +169,13 @@ document.addEventListener('DOMContentLoaded', function() {
       }, async function(results) {
         // 获取选中的图像
         const selectedImages = results[0].result || [];
-        
+
         try {
           // 根据选择的服务商执行不同的生成逻辑
           if (currentProvider === 'comfyui') {
             // 使用ComfyUI
             await sendToComfyUI(currentEndpoint, currentWorkflowId, prompt, selectedImages, showStatus, displayGeneratedImage);
+
           } else {
             // 使用其他文生图服务商
             const provider = availableProviders.find(p => p.id === currentProvider);
@@ -221,6 +222,7 @@ document.addEventListener('DOMContentLoaded', function() {
       selectedImagesEl.textContent = '(无选中图像)';
     }
   }
+
 
   // 显示生成的图像
   function displayGeneratedImage(imageUrl) {
