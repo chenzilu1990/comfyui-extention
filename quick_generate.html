@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>快速生成</title>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="quick_generate.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h2>正在处理请求...</h2>
+      <button id="closeButton" title="关闭">×</button>
+    </header>
+    <div id="inputPreview">
+      <p><strong>提示词:</strong> <span id="promptText"></span></p>
+      <img id="refImage" src="" alt="参考图片" style="display:none; max-width: 100px; max-height: 100px; margin-top: 5px;"/>
+    </div>
+    <div id="status">
+      <div class="spinner"></div>
+      <p>请稍候...</p>
+    </div>
+    <div id="resultContainer" style="display:none;">
+      <img id="generatedImage" src="" alt="生成的图片"/>
+      <a id="downloadLink" href="#" download="generated-image.png" class="download-btn" style="display:none;">下载图片</a>
+    </div>
+  </div>
+  <script type="module" src="quick_generate.js"></script>
+</body>
+</html> 
