@@ -190,6 +190,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // 根据选择的服务商执行不同的生成逻辑
         if (currentProvider === 'comfyui') {
           // 使用ComfyUI
+          showStatus('正在使用ComfyUI生成图像...', 'success');
           sendToComfyUI(currentEndpoint, currentWorkflowId, prompt, selectedImages);
         } else {
           // 使用其他文生图服务商
@@ -250,6 +251,7 @@ document.addEventListener('DOMContentLoaded', function() {
           apiUrl = `${endpoint}/queue`;
           break;
         case 'comfydeploy':
+          showStatus('正在使用comfydeploy生成图像...', 'success');
           apiUrl = `${endpoint}/run/deployment/queue`;
           headers['Authorization'] = `Bearer ${apiKey}`;
           break;
