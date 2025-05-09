@@ -92,8 +92,17 @@ document.addEventListener('DOMContentLoaded', function() {
   // 获取ComfyUI设置DOM元素
   const endpointInput = document.getElementById('endpoint');
   const workflowIdInput = document.getElementById('workflowId');
+  const comfyuiTypeSelect = document.getElementById('comfyui-type');
+  const comfyuiApiKeyInput = document.getElementById('comfyui-api-key');
+  const comfydeploySettings = document.getElementById('comfydeploy-settings');
   const saveComfySettingsBtn = document.getElementById('saveComfySettings');
+  const testComfyAPIBtn = document.getElementById('testComfyAPI');
   const statusEl = document.getElementById('status');
+  
+  // 获取部署说明元素
+  const localhostInfo = document.getElementById('localhost-info');
+  const comfydeployInfo = document.getElementById('comfydeploy-info');
+  const otherInfo = document.getElementById('other-info');
   
   // 获取服务商设置DOM元素
   const selectedProviderSelect = document.getElementById('selected-provider');
@@ -319,31 +328,87 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
   
+  // ComfyUI部署类型改变事件
+  comfyuiTypeSelect.addEventListener('change', function() {
+    const selectedType = this.value;
+    
+    // 重置所有部署说明的显示状态
+    localhostInfo.style.display = 'none';
+    comfydeployInfo.style.display = 'none';
+    otherInfo.style.display = 'none';
+    
+    // 根据选择的类型显示相应的部署说明
+    switch(selectedType) {
+      case 'localhost':
+        localhostInfo.style.display = 'block';
+        comfydeploySettings.style.display = 'none';
+        endpointInput.placeholder = 'http://localhost:8188';
+        workflowIdInput.placeholder = '输入您的工作流ID';
+        break;
+      case 'comfydeploy':
+        comfydeployInfo.style.display = 'block';
+        comfydeploySettings.style.display = 'block';
+        endpointInput.placeholder = 'https://your-instance.comfydeploy.com';
+        workflowIdInput.placeholder = '输入您的部署ID';
+        break;
+      case 'other':
+        otherInfo.style.display = 'block';
+        comfydeploySettings.style.display = 'block';
+        endpointInput.placeholder = '输入API端点URL';
+        workflowIdInput.placeholder = '输入工作流或部署ID';
+        break;
+    }
+  });
+
   // 加载ComfyUI设置
   function loadComfySettings() {
-    chrome.storage.sync.get(['endpoint', 'workflowId'], function(data) {
+    chrome.storage.sync.get(['comfyui_type', 'endpoint', 'workflowId', 'comfyui_api_key'], function(data) {
+      if (data.comfyui_type) {
+        comfyuiTypeSelect.value = data.comfyui_type;
+        // 触发change事件以更新UI
+        comfyuiTypeSelect.dispatchEvent(new Event('change'));
+      }
       if (data.endpoint) {
         endpointInput.value = data.endpoint;
       }
       if (data.workflowId) {
         workflowIdInput.value = data.workflowId;
       }
+      if (data.comfyui_api_key) {
+        comfyuiApiKeyInput.value = data.comfyui_api_key;
+      }
     });
   }
   
   // 保存ComfyUI设置
   function saveComfySettings() {
+    const comfyuiType = comfyuiTypeSelect.value;
     const endpoint = endpointInput.value.trim();
     const workflowId = workflowIdInput.value.trim();
+    const apiKey = comfyuiApiKeyInput.value.trim();
 
-    if (!endpoint || !workflowId) {
-      showStatus('API 端点和工作流 ID 不能为空', 'error');
+    if (!endpoint) {
+      showStatus('API端点不能为空', 'error');
       return;
     }
 
+    if (!workflowId) {
+      showStatus('工作流/部署ID不能为空', 'error');
+      return;
+    }
+    
+    // 对于ComfyDeploy和其他第三方服务，需要检查API密钥
+    if ((comfyuiType === 'comfydeploy' || comfyuiType === 'other') && !apiKey) {
+      showStatus('API密钥不能为空', 'error');
+      return;
+    }
+
+    // 保存所有ComfyUI相关设置
     chrome.storage.sync.set({
+      comfyui_type: comfyuiType,
       endpoint: endpoint,
-      workflowId: workflowId
+      workflowId: workflowId,
+      comfyui_api_key: apiKey
     }, function() {
       if (chrome.runtime.lastError) {
         showStatus(`保存设置时出错: ${chrome.runtime.lastError.message}`, 'error');
@@ -352,6 +417,60 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
   }
+
+  // 测试ComfyUI API连接
+  testComfyAPIBtn.addEventListener('click', function() {
+    const comfyuiType = comfyuiTypeSelect.value;
+    const endpoint = endpointInput.value.trim();
+    const apiKey = comfyuiApiKeyInput.value.trim();
+    
+    if (!endpoint) {
+      showStatus('请输入API端点', 'error');
+      return;
+    }
+    
+    // 对于ComfyDeploy和其他第三方服务，检查API密钥
+    if ((comfyuiType === 'comfydeploy' || comfyuiType === 'other') && !apiKey) {
+      showStatus('请输入API密钥', 'error');
+      return;
+    }
+    
+    // 构建测试请求
+    let testUrl, headers = {};
+    
+    switch(comfyuiType) {
+      case 'localhost':
+        testUrl = `${endpoint}/system_stats`;
+        break;
+      case 'comfydeploy':
+        testUrl = `${endpoint}/healthz`;
+        headers['Authorization'] = `Bearer ${apiKey}`;
+        break;
+      case 'other':
+        testUrl = `${endpoint}/healthz`;
+        headers['Authorization'] = `Bearer ${apiKey}`;
+        break;
+    }
+    
+    showStatus('正在测试API连接...', 'info');
+    
+    fetch(testUrl, {
+      method: 'GET',
+      headers: headers
+    })
+    .then(response => {
+      if (!response.ok) {
+        throw new Error(`API返回错误: ${response.status}`);
+      }
+      return response.text();
+    })
+    .then(data => {
+      showStatus('API连接成功!', 'success');
+    })
+    .catch(error => {
+      showStatus(`连接测试失败: ${error.message}`, 'error');
+    });
+  });
 
   // 显示状态消息
   function showStatus(message, type) {
@@ -369,7 +488,7 @@ document.addEventListener('DOMContentLoaded', function() {
       }, 3000);
     }
   }
-  
+
   // 初始化
   loadComfySettings();
   initProvidersList();

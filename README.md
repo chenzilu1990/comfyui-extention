@@ -29,8 +29,13 @@
 #### ComfyUI设置:
 1. 点击Chrome工具栏中的扩展图标
 2. 点击"打开设置"按钮
-3. 在设置页面中填写ComfyUI API端点和工作流ID
-4. 点击"保存设置"
+3. 在设置页面中选择ComfyUI部署类型:
+   - **本地部署 (localhost)**: 适用于在您自己的计算机上运行的ComfyUI
+   - **ComfyDeploy 云服务**: 适用于使用ComfyDeploy托管的服务
+   - **其他第三方服务**: 适用于其他类型的ComfyUI托管服务
+4. 根据选择的部署类型填写相应的配置信息
+5. 点击"测试连接"确认API连接正常
+6. 点击"保存设置"
 
 #### 配置文生图服务商:
 1. 在设置页面左侧选择"文生图服务"
@@ -62,8 +67,11 @@
 ## 支持的服务商和模型
 
 ### ComfyUI
-- 支持任何部署的ComfyUI API端点
-- 需要提供部署ID和API端点
+- 支持多种部署方式:
+  - **本地部署**: 本地运行的ComfyUI实例 (http://localhost:8188)
+  - **ComfyDeploy**: 由ComfyDeploy托管的服务，需要API密钥
+  - **其他第三方服务**: 其他ComfyUI托管服务
+- 针对不同的部署类型有不同的API路径和认证方式
 
 ### OpenAI (DALL-E)
 - 支持DALL-E 3和DALL-E 2

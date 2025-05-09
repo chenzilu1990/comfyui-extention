@@ -46,19 +46,26 @@ document.addEventListener('DOMContentLoaded', function() {
   // 用于存储从设置中加载的值
   let currentEndpoint = '';
   let currentWorkflowId = '';
+  let currentComfyUIType = '';
+  let currentComfyUIApiKey = '';
   let availableProviders = [];
   let currentProvider = 'comfyui'; // 默认使用ComfyUI
 
   // 加载保存的设置
   function loadSettings() {
     // 加载ComfyUI设置
-    chrome.storage.sync.get(['endpoint', 'workflowId'], function(data) {
+    chrome.storage.sync.get(['comfyui_type', 'endpoint', 'workflowId', 'comfyui_api_key'], function(data) {
       if (data.endpoint) {
-        // endpointInput.value = data.endpoint; // 已移至设置页面
         currentEndpoint = data.endpoint;
       }
       if (data.workflowId) {
         currentWorkflowId = data.workflowId;
+      }
+      if (data.comfyui_type) {
+        currentComfyUIType = data.comfyui_type || 'localhost';
+      }
+      if (data.comfyui_api_key) {
+        currentComfyUIApiKey = data.comfyui_api_key;
       }
       
       // 如果缺少ComfyUI设置，提示用户
@@ -230,56 +237,162 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // 发送到ComfyUI API
   function sendToComfyUI(endpoint, workflowId, prompt, images) {
-    // 构建API请求
-    const apiUrl = `${endpoint}/run`;
-    
-    // 构建ComfyUI工作流输入
-    const workflowInputs = {
-      prompt: {
-        type: "string",
-        value: prompt
+    // 获取当前ComfyUI类型和API密钥
+    chrome.storage.sync.get(['comfyui_type', 'comfyui_api_key'], function(data) {
+      const comfyuiType = data.comfyui_type || 'localhost';
+      const apiKey = data.comfyui_api_key || '';
+      
+      // 根据不同类型构建API请求
+      let apiUrl, headers = { 'Content-Type': 'application/json' };
+      
+      switch(comfyuiType) {
+        case 'localhost': 
+          apiUrl = `${endpoint}/queue`;
+          break;
+        case 'comfydeploy':
+          apiUrl = `${endpoint}/run/deployment/queue`;
+          headers['Authorization'] = `Bearer ${apiKey}`;
+          break;
+        case 'other':
+          apiUrl = `${endpoint}/api/queue`;
+          if (apiKey) {
+            headers['Authorization'] = `Bearer ${apiKey}`;
+          }
+          break;
       }
-    };
-    
-    // 如果有选中的图像，添加到工作流输入
-    if (images && images.length > 0) {
-      workflowInputs.image = {
-        type: "image", 
-        value: images[0] // 使用第一张选中的图像
+      
+      // 构建工作流输入
+      const workflowInputs = {
+        prompt: {
+          type: "string",
+          value: prompt
+        }
       };
+      
+      // 如果有选中的图像，添加到工作流输入
+      if (images && images.length > 0) {
+        workflowInputs.image = {
+          type: "image", 
+          value: images[0] // 使用第一张选中的图像
+        };
+      }
+      
+      // 准备请求主体
+      let requestBody;
+      if (comfyuiType === 'comfydeploy') {
+        requestBody = {
+          deployment_id: workflowId,
+          inputs: workflowInputs
+        };
+      } else {
+        requestBody = {
+          workflow_id: workflowId,
+          inputs: workflowInputs
+        };
+      }
+      
+      // 发送请求
+      fetch(apiUrl, {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(requestBody)
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`API错误: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        // 处理返回结果
+        let runId = data.run_id || data.id || data.task_id;
+        
+        if (runId) {
+          showStatus(`成功提交! 运行ID: ${runId}`, 'success');
+          
+          // 轮询结果
+          pollComfyUIStatus(endpoint, runId, comfyuiType, apiKey);
+        } else {
+          showStatus('提交成功，但未返回运行ID', 'error');
+        }
+      })
+      .catch(error => {
+        showStatus(`错误: ${error.message}`, 'error');
+      });
+    });
+  }
+
+  // 轮询ComfyUI运行状态
+  function pollComfyUIStatus(endpoint, runId, comfyuiType, apiKey) {
+    // 根据不同类型构建状态URL
+    let statusUrl, headers = {};
+    
+    switch(comfyuiType) {
+      case 'localhost':
+        statusUrl = `${endpoint}/history/${runId}`;
+        break;
+      case 'comfydeploy':
+        statusUrl = `${endpoint}/run/${runId}`;
+        headers['Authorization'] = `Bearer ${apiKey}`;
+        break;
+      case 'other':
+        statusUrl = `${endpoint}/api/runs/${runId}`;
+        if (apiKey) {
+          headers['Authorization'] = `Bearer ${apiKey}`;
+        }
+        break;
     }
     
-    // 发送请求
-    fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        deployment_id: workflowId,
-        inputs: workflowInputs
-      })
-    })
-    .then(response => {
-      if (!response.ok) {
-        throw new Error(`API错误: ${response.status}`);
-      }
-      return response.json();
-    })
-    .then(data => {
-      // 处理返回结果
-      if (data.run_id) {
-        showStatus(`成功提交! 运行ID: ${data.run_id}`, 'success');
-        
-        // 轮询结果
-        pollComfyUIStatus(endpoint, data.run_id);
-      } else {
-        showStatus('提交成功，但未返回运行ID', 'error');
-      }
-    })
-    .catch(error => {
-      showStatus(`错误: ${error.message}`, 'error');
-    });
+    const checkStatus = () => {
+      fetch(statusUrl, { headers })
+        .then(response => response.json())
+        .then(data => {
+          // 检查运行状态，根据不同类型处理不同的响应格式
+          let status = data.status || '';
+          let outputImage = null;
+          
+          // 根据不同类型提取图像
+          if (comfyuiType === 'localhost') {
+            if (data.outputs && data.outputs[0] && data.outputs[0].images && data.outputs[0].images.length > 0) {
+              outputImage = `${endpoint}/view?filename=${data.outputs[0].images[0].filename}&type=output`;
+              status = 'completed';
+            }
+          } else if (comfyuiType === 'comfydeploy') {
+            if (status === 'completed' || status === 'succeeded') {
+              if (data.outputs && data.outputs.length > 0 && data.outputs[0].type === 'image_url') {
+                outputImage = data.outputs[0].data.url;
+              } else if (data.output && data.output.images && data.output.images.length > 0) {
+                outputImage = data.output.images[0].url;
+              }
+            }
+          } else {
+            if (status === 'completed') {
+              if (data.outputs && data.outputs.image) {
+                outputImage = data.outputs.image;
+              }
+            }
+          }
+          
+          if (status === 'completed' || status === 'succeeded') {
+            if (outputImage) {
+              displayGeneratedImage(outputImage);
+            } else {
+              showStatus('图像生成成功，但未找到输出图像', 'error');
+            }
+          } else if (status === 'failed') {
+            showStatus(`生成失败: ${data.error || '未知错误'}`, 'error');
+          } else {
+            // 继续轮询
+            setTimeout(checkStatus, 1000);
+          }
+        })
+        .catch(error => {
+          showStatus(`检查状态错误: ${error.message}`, 'error');
+        });
+    };
+    
+    // 开始轮询
+    setTimeout(checkStatus, 1000);
   }
 
   // 发送到第三方文生图服务商
@@ -442,40 +555,6 @@ document.addEventListener('DOMContentLoaded', function() {
     .catch(error => {
       showStatus(`API错误: ${error.message}`, 'error');
     });
-  }
-  
-  // 轮询ComfyUI运行状态
-  function pollComfyUIStatus(endpoint, runId) {
-    const statusUrl = `${endpoint}/run_status?run_id=${runId}`;
-    
-    const checkStatus = () => {
-      fetch(statusUrl)
-        .then(response => response.json())
-        .then(data => {
-          // 检查运行状态
-          if (data.status === 'completed' || data.status === 'succeeded') {
-            // 获取生成的图像
-            if (data.outputs && data.outputs.length > 0 && data.outputs[0].type === 'image_url') {
-              displayGeneratedImage(data.outputs[0].data.url);
-            } else if (data.output && data.output.images && data.output.images.length > 0) {
-              displayGeneratedImage(data.output.images[0].url);
-            } else {
-              showStatus('图像生成成功，但未找到输出图像的URL', 'error');
-            }
-          } else if (data.status === 'failed') {
-            showStatus(`生成失败: ${data.error || '未知错误'}`, 'error');
-          } else {
-            // 继续轮询
-            setTimeout(checkStatus, 1000);
-          }
-        })
-        .catch(error => {
-          showStatus(`检查状态错误: ${error.message}`, 'error');
-        });
-    };
-    
-    // 开始轮询
-    setTimeout(checkStatus, 1000);
   }
   
   // 轮询MidJourney状态
