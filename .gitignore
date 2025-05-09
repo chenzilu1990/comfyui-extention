@@ -1,0 +1,33 @@
+# 依赖项
+node_modules/
+
+# 打包文件
+*.zip
+*.crx
+
+# 构建输出 (如果适用)
+dist/
+build/
+
+# 日志文件
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 操作系统生成的文件
+.DS_Store
+Thumbs.db
+._*
+
+# 编辑器和IDE文件夹
+.vscode/
+.idea/
+
+# 本地配置文件 (如果创建了)
+config.local.js
+.env
+
+# 测试报告和覆盖率 (如果适用)
+coverage/
+*.lcov 

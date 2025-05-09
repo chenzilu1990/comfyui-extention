@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ComfyUI 网页图像生成器</title>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      width: 350px;
+      padding: 10px;
+      font-family: Arial, sans-serif;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    label {
+      font-weight: bold;
+    }
+    button {
+      background-color: #4285f4;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    button:hover {
+      background-color: #3367d6;
+    }
+    .preview {
+      margin-top: 10px;
+      border: 1px solid #ccc;
+      padding: 10px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .preview img {
+      max-width: 100%;
+      max-height: 150px;
+      object-fit: contain;
+    }
+    .status {
+      margin-top: 10px;
+      padding: 5px;
+      border-radius: 4px;
+    }
+    .error {
+      background-color: #ffebee;
+      color: #c62828;
+    }
+    .success {
+      background-color: #e8f5e9;
+      color: #2e7d32;
+    }
+    .settings {
+      margin-top: 15px;
+      border-top: 1px solid #eee;
+      padding-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>ComfyUI 网页图像生成器</h2>
+    
+    <div class="form-group">
+      <label for="endpoint">ComfyUI API 端点:</label>
+      <input type="text" id="endpoint" placeholder="例如: https://your-comfyui-api.com">
+    </div>
+    
+    <div class="form-group">
+      <label for="prompt">提示词:</label>
+      <textarea id="prompt" rows="3" placeholder="输入提示词或使用页面选择的文本"></textarea>
+    </div>
+    
+    <div class="preview">
+      <p>从页面选择的内容:</p>
+      <div id="selectedText"></div>
+      <div id="selectedImages"></div>
+    </div>
+    
+    <button id="generate">生成图像</button>
+    <button id="captureContent">获取页面内容</button>
+    
+    <div id="status" class="status"></div>
+    
+    <div id="result"></div>
+    
+    <button id="openSettings">打开设置</button>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html> 
