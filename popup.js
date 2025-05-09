@@ -678,15 +678,15 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // 如果不是错误消息，3秒后自动隐藏
-    if (type !== 'error') {
-      setTimeout(() => {
-        statusEl.classList.remove('visible');
-        setTimeout(() => {
-          statusEl.className = 'status';
-          statusEl.innerHTML = '';
-        }, 300); // 等待淡出动画完成
-      }, 3000);
-    }
+    // if (type !== 'error') {
+    //   setTimeout(() => {
+    //     statusEl.classList.remove('visible');
+    //     setTimeout(() => {
+    //       statusEl.className = 'status';
+    //       statusEl.innerHTML = '';
+    //     }, 300); // 等待淡出动画完成
+    //   }, 3000);
+    // }
   }
 });
 
