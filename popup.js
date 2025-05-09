@@ -262,12 +262,16 @@ document.addEventListener('DOMContentLoaded', function() {
       }
       
       // 构建工作流输入
-      const workflowInputs = {
-        prompt: {
-          type: "string",
-          value: prompt
+      let workflowInputs;
+      if (comfyuiType === 'comfydeploy') {
+        workflowInputs = {
+          input_text: prompt
         }
-      };
+      } else {
+        workflowInputs = {
+          prompt: prompt
+        }
+      }
       
       // 如果有选中的图像，添加到工作流输入
       if (images && images.length > 0) {
@@ -348,6 +352,7 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(response => response.json())
         .then(data => {
           // 检查运行状态，根据不同类型处理不同的响应格式
+          showStatus(`ComfyUI状态: ${data.status}`, 'info');
           let status = data.status || '';
           let outputImage = null;
           
@@ -358,9 +363,9 @@ document.addEventListener('DOMContentLoaded', function() {
               status = 'completed';
             }
           } else if (comfyuiType === 'comfydeploy') {
-            if (status === 'completed' || status === 'succeeded') {
-              if (data.outputs && data.outputs.length > 0 && data.outputs[0].type === 'image_url') {
-                outputImage = data.outputs[0].data.url;
+            if (status === 'completed' || status === 'success') {
+              if (data.outputs && data.outputs.length > 0) {
+                outputImage = data.outputs[0].data.images[0].url;
               } else if (data.output && data.output.images && data.output.images.length > 0) {
                 outputImage = data.output.images[0].url;
               }
@@ -373,7 +378,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
           }
           
-          if (status === 'completed' || status === 'succeeded') {
+          if (status === 'completed' || status === 'success') {
             if (outputImage) {
               displayGeneratedImage(outputImage);
             } else {
@@ -383,7 +388,7 @@ document.addEventListener('DOMContentLoaded', function() {
             showStatus(`生成失败: ${data.error || '未知错误'}`, 'error');
           } else {
             // 继续轮询
-            setTimeout(checkStatus, 1000);
+            setTimeout(checkStatus, 2000);
           }
         })
         .catch(error => {
@@ -684,6 +689,25 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
 });
+
+function showComfyUIStatus(message, type) {
+      statusEl.innerHTML = '';
+    
+    let icon = '';
+    if (type === 'success') {
+      icon = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>';
+    } else if (type === 'error') {
+      icon = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>';
+    } else if (type === 'info') {
+      icon = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>';
+    }
+    
+    statusEl.innerHTML = icon + message;
+    statusEl.className = 'status visible';
+    if(type) {
+      statusEl.classList.add(type);
+    }
+}
 
 // 在页面上执行的内容捕获函数
 function capturePageContent() {
