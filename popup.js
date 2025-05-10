@@ -6,13 +6,12 @@ document.addEventListener('DOMContentLoaded', function() {
   // const endpointInput = document.getElementById('endpoint'); // 已移至设置页面
   const promptInput = document.getElementById('prompt');
   const generateBtn = document.getElementById('generate');
-  const captureBtn = document.getElementById('captureContent');
   const openSettingsBtn = document.getElementById('openSettings');
   const statusEl = document.getElementById('status');
   const resultEl = document.getElementById('result');
-  const selectedTextEl = document.getElementById('selectedText');
-  const selectedImagesEl = document.getElementById('selectedImages');
-
+  const historyContainerEl = document.getElementById('historyContainer');
+  const clearHistoryBtn = document.getElementById('clearHistory');
+  
   // 添加服务商选择器
   const providerSelectorContainer = document.querySelector('.provider-selector');
   providerSelectorContainer.innerHTML = `
@@ -33,6 +32,10 @@ document.addEventListener('DOMContentLoaded', function() {
   let currentComfyUIApiKey = '';
   let availableProviders = [];
   let currentProvider = 'comfyui'; // 默认使用ComfyUI
+  
+  // 历史记录数据
+  let imageHistory = [];
+  const MAX_HISTORY_ITEMS = 30; // 最多保存的历史记录数
 
   // 加载保存的设置
   function loadSettings() {
@@ -86,6 +89,9 @@ document.addEventListener('DOMContentLoaded', function() {
       // 更新服务商选择器
       updateProviderSelector();
     });
+    
+    // 加载历史记录
+    loadImageHistory();
   }
   
   // 更新服务商选择器
@@ -140,15 +146,10 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
-  // 获取当前标签页选择的内容
-  captureBtn.addEventListener('click', function() {
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-      chrome.scripting.executeScript({
-        target: {tabId: tabs[0].id},
-        function: capturePageContent
-      }, displayCapturedContent);
-    });
-  });
+  // 清除结果区域
+  function clearResult() {
+    resultEl.innerHTML = '';
+  }
 
   // 生成图像
   generateBtn.addEventListener('click', async function() {
@@ -159,74 +160,40 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
     
+    // 先清除上一次的结果
+    clearResult();
+    
     showStatus('正在生成图像...', 'success');
     
-    // 从页面获取选中的图像
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-      chrome.scripting.executeScript({
-        target: {tabId: tabs[0].id},
-        function: getSelectedImages
-      }, async function(results) {
-        // 获取选中的图像
-        const selectedImages = results[0].result || [];
-
-        try {
-          // 根据选择的服务商执行不同的生成逻辑
-          if (currentProvider === 'comfyui') {
-            // 使用ComfyUI
-            await sendToComfyUI(currentEndpoint, currentWorkflowId, prompt, selectedImages, showStatus, displayGeneratedImage);
-
-          } else {
-            // 使用其他文生图服务商
-            const provider = availableProviders.find(p => p.id === currentProvider);
-            if (provider && provider.settings) {
-              await sendToImageProvider(currentProvider, provider.settings, prompt, selectedImages[0], showStatus, displayGeneratedImage);
-            } else {
-              showStatus(`未找到${currentProvider}的设置信息`, 'error');
-            }
-          }
-        } catch (error) {
-          showStatus(`生成图像时出错: ${error.message}`, 'error');
+    try {
+      // 根据选择的服务商执行不同的生成逻辑
+      if (currentProvider === 'comfyui') {
+        // 使用ComfyUI
+        await sendToComfyUI(currentEndpoint, currentWorkflowId, prompt, [], showStatus, imageUrl => {
+          displayGeneratedImage(imageUrl);
+          saveToHistory(imageUrl, prompt);
+        });
+      } else {
+        // 使用其他文生图服务商
+        const provider = availableProviders.find(p => p.id === currentProvider);
+        if (provider && provider.settings) {
+          await sendToImageProvider(currentProvider, provider.settings, prompt, null, showStatus, imageUrl => {
+            displayGeneratedImage(imageUrl);
+            saveToHistory(imageUrl, prompt);
+          });
+        } else {
+          showStatus(`未找到${currentProvider}的设置信息`, 'error');
         }
-      });
-    });
+      }
+    } catch (error) {
+      showStatus(`生成图像时出错: ${error.message}`, 'error');
+    }
   });
-
-  // 显示捕获的内容
-  function displayCapturedContent(results) {
-    if (!results || !results[0] || !results[0].result) {
-      showStatus('无法获取页面内容', 'error');
-      return;
-    }
-    
-    const content = results[0].result;
-    
-    // 显示文本
-    if (content.text) {
-      selectedTextEl.textContent = content.text;
-      promptInput.value = content.text;
-    } else {
-      selectedTextEl.textContent = '(无选中文本)';
-    }
-    
-    // 显示图像
-    selectedImagesEl.innerHTML = '';
-    if (content.images && content.images.length > 0) {
-      content.images.forEach(imgSrc => {
-        const img = document.createElement('img');
-        img.src = imgSrc;
-        img.style.margin = '5px';
-        selectedImagesEl.appendChild(img);
-      });
-    } else {
-      selectedImagesEl.textContent = '(无选中图像)';
-    }
-  }
-
 
   // 显示生成的图像
   function displayGeneratedImage(imageUrl) {
-    resultEl.innerHTML = '';
+    // 确保结果区域是空的
+    clearResult();
     
     const img = document.createElement('img');
     img.src = imageUrl;
@@ -251,6 +218,101 @@ document.addEventListener('DOMContentLoaded', function() {
     
     showStatus('图像生成完成!', 'success');
   }
+  
+  // 加载历史记录
+  function loadImageHistory() {
+    chrome.storage.local.get(['imageHistory'], function(result) {
+      if (result.imageHistory && Array.isArray(result.imageHistory)) {
+        imageHistory = result.imageHistory;
+        renderHistoryItems();
+      } else {
+        imageHistory = [];
+        renderHistoryItems();
+      }
+    });
+  }
+  
+  // 保存图像到历史记录
+  function saveToHistory(imageUrl, prompt) {
+    const timestamp = new Date().toISOString();
+    const newItem = {
+      url: imageUrl,
+      prompt: prompt,
+      timestamp: timestamp,
+      date: new Date().toLocaleString('zh-CN')
+    };
+    
+    // 添加到历史记录的开头
+    imageHistory.unshift(newItem);
+    
+    // 限制历史记录数量
+    if (imageHistory.length > MAX_HISTORY_ITEMS) {
+      imageHistory = imageHistory.slice(0, MAX_HISTORY_ITEMS);
+    }
+    
+    // 保存到存储
+    chrome.storage.local.set({ imageHistory: imageHistory }, function() {
+      console.log('历史记录已保存');
+      renderHistoryItems();
+    });
+  }
+  
+  // 渲染历史记录
+  function renderHistoryItems() {
+    // 清空历史容器
+    historyContainerEl.innerHTML = '';
+    
+    if (imageHistory.length === 0) {
+      historyContainerEl.innerHTML = '<div class="no-history">暂无生成历史记录</div>';
+      return;
+    }
+    
+    // 添加历史记录项
+    imageHistory.forEach((item, index) => {
+      const historyItem = document.createElement('div');
+      historyItem.className = 'history-item';
+      historyItem.dataset.index = index;
+      
+      // 图片
+      const img = document.createElement('img');
+      img.src = item.url;
+      img.alt = `生成的图片 ${index + 1}`;
+      img.loading = 'lazy'; // 延迟加载
+      
+      // 悬停时显示的提示信息
+      const overlay = document.createElement('div');
+      overlay.className = 'history-item-overlay';
+      overlay.textContent = item.prompt.length > 30 ? item.prompt.substring(0, 30) + '...' : item.prompt;
+      
+      historyItem.appendChild(img);
+      historyItem.appendChild(overlay);
+      historyContainerEl.appendChild(historyItem);
+      
+      // 点击历史项时的事件处理
+      historyItem.addEventListener('click', function() {
+        const selectedItem = imageHistory[this.dataset.index];
+        // 显示该历史记录的图像
+        displayGeneratedImage(selectedItem.url);
+        // 在提示词输入框中填入该历史记录的提示词
+        promptInput.value = selectedItem.prompt;
+      });
+    });
+  }
+  
+  // 清除历史记录
+  clearHistoryBtn.addEventListener('click', function() {
+    // 确认是否清除
+    if (imageHistory.length > 0 && confirm('确定要清除所有历史记录吗？此操作不可撤销。')) {
+      imageHistory = [];
+      chrome.storage.local.remove('imageHistory', function() {
+        console.log('历史记录已清除');
+        renderHistoryItems();
+        showStatus('历史记录已清除', 'info');
+      });
+    } else if (imageHistory.length === 0) {
+      showStatus('没有历史记录可清除', 'info');
+    }
+  });
   
   // 显示状态消息
   function showStatus(message, type) {
@@ -282,71 +344,4 @@ document.addEventListener('DOMContentLoaded', function() {
     //   }, 3000);
     // }
   }
-});
-
-// 在页面上执行的内容捕获函数
-function capturePageContent() {
-  const selection = window.getSelection();
-  const selectionText = selection.toString();
-  
-  // 获取选中区域内的图像
-  const selectedImages = [];
-  
-  if (selection.rangeCount > 0) {
-    const range = selection.getRangeAt(0);
-    const container = range.commonAncestorContainer;
-    
-    // 如果选择区域是文本节点，获取其父元素
-    const element = container.nodeType === 3 ? container.parentNode : container;
-    
-    // 查找选择区域内的所有图像
-    const images = element.querySelectorAll('img');
-    images.forEach(img => {
-      if (img.src) {
-        selectedImages.push(img.src);
-      }
-    });
-  }
-  
-  // 如果没有选中文本，但有选中的图像元素
-  const clickedImage = document.activeElement.tagName === 'IMG' ? document.activeElement : null;
-  if (!selectionText && !selectedImages.length && clickedImage && clickedImage.src) {
-    selectedImages.push(clickedImage.src);
-  }
-  
-  return {
-    text: selectionText,
-    images: selectedImages
-  };
-}
-
-// 获取选中的图像
-function getSelectedImages() {
-  const selectedImages = [];
-  
-  // 获取选中区域内的图像
-  const selection = window.getSelection();
-  if (selection.rangeCount > 0) {
-    const range = selection.getRangeAt(0);
-    const container = range.commonAncestorContainer;
-    
-    // 如果选择区域是文本节点，获取其父元素
-    const element = container.nodeType === 3 ? container.parentNode : container;
-    
-    // 查找选择区域内的所有图像
-    const images = element.querySelectorAll('img');
-    images.forEach(img => {
-      if (img.src) {
-        selectedImages.push(img.src);
-      }
-    });
-  }
-  
-  // 如果没有选中图像，但有点击的图像元素
-  const clickedImage = document.activeElement.tagName === 'IMG' ? document.activeElement : null;
-  if (!selectedImages.length && clickedImage && clickedImage.src) {
-    selectedImages.push(clickedImage.src);
-  }
-  
-  return selectedImages;
-} 
+}); 
