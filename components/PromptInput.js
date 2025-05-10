@@ -1,7 +1,9 @@
- /**
+/**
  * 提示词输入框组件
  * 提供输入框、历史提示词和快捷操作
  */
+import PromptTemplates from './PromptTemplates.js';
+
 class PromptInput {
   constructor(options = {}) {
     this.options = Object.assign({
@@ -11,13 +13,18 @@ class PromptInput {
       onSubmit: null,
       storageKey: 'promptHistory',
       parentElement: document.body,
+      showTemplates: true
     }, options);
     
     this.history = [];
     this.element = null;
     this.inputElement = null;
     this.historyElement = null;
+    this.templatesElement = null;
+    this.templatesToggleBtn = null;
     this.currentHistoryIndex = -1;
+    this.promptTemplates = null;
+    this.showingTemplates = true;
     
     this.init();
   }
@@ -77,7 +84,21 @@ class PromptInput {
     historyBtn.title = '历史提示词';
     historyBtn.addEventListener('click', () => this.toggleHistoryPanel());
     
+    // 添加模板切换按钮
+    this.templatesToggleBtn = document.createElement('button');
+    this.templatesToggleBtn.className = 'prompt-tool-btn';
+    this.templatesToggleBtn.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+        <line x1="9" y1="3" x2="9" y2="21"></line>
+        <line x1="3" y1="9" x2="21" y2="9"></line>
+      </svg>
+    `;
+    this.templatesToggleBtn.title = '显示/隐藏模板';
+    this.templatesToggleBtn.addEventListener('click', () => this.toggleTemplates());
+    
     // 添加按钮到工具栏
+    toolbar.appendChild(this.templatesToggleBtn);
     toolbar.appendChild(clearBtn);
     toolbar.appendChild(historyBtn);
     
@@ -91,7 +112,16 @@ class PromptInput {
     this.historyElement.style.display = 'none';
     this.refreshHistoryPanel();
     
+    // 创建模板面板容器
+    this.templatesElement = document.createElement('div');
+    this.templatesElement.className = 'prompt-templates-container';
+    if (!this.options.showTemplates) {
+      this.templatesElement.style.display = 'none';
+      this.showingTemplates = false;
+    }
+    
     // 组装所有元素
+    this.element.appendChild(this.templatesElement);
     this.element.appendChild(inputArea);
     this.element.appendChild(this.historyElement);
     
@@ -99,6 +129,13 @@ class PromptInput {
     if (this.options.parentElement) {
       this.options.parentElement.appendChild(this.element);
     }
+    
+    // 初始化模板组件
+    this.promptTemplates = new PromptTemplates({
+      parentElement: this.templatesElement,
+      onSelectTemplate: (template) => this.insertTemplate(template),
+      onSelectTag: (tag) => this.insertTag(tag)
+    });
     
     // 添加样式
     this.addStyles();
@@ -197,6 +234,11 @@ class PromptInput {
       .prompt-tool-btn:hover {
         background-color: var(--bg-secondary, #f9fafb);
         color: var(--primary-color, #4f46e5);
+      }
+      
+      .prompt-tool-btn.active {
+        color: var(--primary-color, #4f46e5);
+        background-color: var(--bg-secondary, #f9fafb);
       }
       
       .prompt-history {
@@ -345,6 +387,49 @@ class PromptInput {
    */
   hideHistoryPanel() {
     this.historyElement.style.display = 'none';
+  }
+  
+  /**
+   * 切换模板面板显示状态
+   */
+  toggleTemplates() {
+    this.showingTemplates = !this.showingTemplates;
+    this.templatesElement.style.display = this.showingTemplates ? 'block' : 'none';
+    
+    // 更新按钮状态
+    if (this.showingTemplates) {
+      this.templatesToggleBtn.classList.add('active');
+    } else {
+      this.templatesToggleBtn.classList.remove('active');
+    }
+  }
+  
+  /**
+   * 插入模板到输入框
+   * @param {string} template 模板内容
+   */
+  insertTemplate(template) {
+    this.setValue(template);
+    this.inputElement.focus();
+  }
+  
+  /**
+   * 插入标签到输入框
+   * @param {string} tag 标签内容
+   */
+  insertTag(tag) {
+    const currentText = this.getValue();
+    const cursorPos = this.inputElement.selectionStart;
+    
+    // 在光标位置插入标签
+    const newText = currentText.substring(0, cursorPos) + tag + currentText.substring(cursorPos);
+    this.setValue(newText);
+    
+    // 将光标定位到插入内容之后
+    setTimeout(() => {
+      this.inputElement.focus();
+      this.inputElement.setSelectionRange(cursorPos + tag.length, cursorPos + tag.length);
+    }, 0);
   }
   
   /**
