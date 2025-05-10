@@ -4,6 +4,10 @@
  */
 import PromptTemplates from './PromptTemplates.js';
 import translationService from './TranslationService.js';
+import PromptHistory from './PromptHistory.js';
+import PromptToolbar from './PromptToolbar.js';
+import TranslateWarning from './TranslateWarning.js';
+
 class PromptInput {
   constructor(options = {}) {
     this.options = Object.assign({
@@ -17,17 +21,16 @@ class PromptInput {
       detectChinese: true  // 是否检测中文并提供翻译提醒
     }, options);
     
-    this.history = [];
     this.element = null;
     this.inputElement = null;
-    this.historyElement = null;
-    this.templatesElement = null;
-    this.templatesToggleBtn = null;
-    this.translateWarningElement = null;
-    this.currentHistoryIndex = -1;
-    this.promptTemplates = null;
     this.showingTemplates = true;
     this.inputContainsChinese = false;
+    
+    // 组件引用
+    this.promptHistory = null;
+    this.promptToolbar = null;
+    this.translateWarning = null;
+    this.promptTemplates = null;
     
     this.init();
   }
@@ -36,7 +39,6 @@ class PromptInput {
    * 初始化组件
    */
   init() {
-    this.loadHistory();
     this.render();
     this.setupEventListeners();
   }
@@ -60,79 +62,48 @@ class PromptInput {
     this.inputElement.rows = 3;
     
     // 创建工具栏
-    const toolbar = document.createElement('div');
-    toolbar.className = 'prompt-toolbar';
-    
-    // 添加清除按钮
-    const clearBtn = document.createElement('button');
-    clearBtn.className = 'prompt-tool-btn';
-    clearBtn.innerHTML = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="18" y1="6" x2="6" y2="18"></line>
-        <line x1="6" y1="6" x2="18" y2="18"></line>
-      </svg>
-    `;
-    clearBtn.title = '清除输入';
-    clearBtn.addEventListener('click', () => this.clearInput());
-    
-    // 添加历史按钮
-    const historyBtn = document.createElement('button');
-    historyBtn.className = 'prompt-tool-btn';
-    historyBtn.innerHTML = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="1 4 1 10 7 10"></polyline>
-        <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
-      </svg>
-    `;
-    historyBtn.title = '历史提示词';
-    historyBtn.addEventListener('click', () => this.toggleHistoryPanel());
-    
-    // 添加模板切换按钮
-    this.templatesToggleBtn = document.createElement('button');
-    this.templatesToggleBtn.className = 'prompt-tool-btn';
-    this.templatesToggleBtn.innerHTML = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-        <line x1="9" y1="3" x2="9" y2="21"></line>
-        <line x1="3" y1="9" x2="21" y2="9"></line>
-      </svg>
-    `;
-    this.templatesToggleBtn.title = '显示/隐藏模板';
-    this.templatesToggleBtn.addEventListener('click', () => this.toggleTemplates());
-    
-    // 添加按钮到工具栏
-    toolbar.appendChild(this.templatesToggleBtn);
-    toolbar.appendChild(clearBtn);
-    toolbar.appendChild(historyBtn);
+    this.promptToolbar = new PromptToolbar({
+      onClear: () => this.clearInput(),
+      onToggleHistory: () => this.promptHistory.toggle(),
+      onToggleTemplates: () => this.toggleTemplates(),
+      showTemplates: this.options.showTemplates
+    });
     
     // 组装输入区域
     inputArea.appendChild(this.inputElement);
-    inputArea.appendChild(toolbar);
+    inputArea.appendChild(this.promptToolbar.getElement());
     
-    // 创建翻译提醒区域
-    this.translateWarningElement = document.createElement('div');
-    this.translateWarningElement.className = 'translate-warning';
-    this.translateWarningElement.style.display = 'none';
+    // 创建翻译提醒组件
+    this.translateWarning = new TranslateWarning({
+      onTranslate: () => this.translateInput(),
+      onIgnore: () => this.translateWarning.hide()
+    });
     
-    // 创建历史面板
-    this.historyElement = document.createElement('div');
-    this.historyElement.className = 'prompt-history';
-    this.historyElement.style.display = 'none';
-    this.refreshHistoryPanel();
+    // 创建历史记录组件
+    this.promptHistory = new PromptHistory({
+      storageKey: this.options.storageKey,
+      maxHistory: this.options.maxHistory,
+      onSelect: (prompt) => {
+        this.setValue(prompt);
+        this.promptHistory.hide();
+      }
+    });
     
     // 创建模板面板容器
-    this.templatesElement = document.createElement('div');
-    this.templatesElement.className = 'prompt-templates-container';
+    const templatesElement = document.createElement('div');
+    templatesElement.className = 'prompt-templates-container';
     if (!this.options.showTemplates) {
-      this.templatesElement.style.display = 'none';
+      templatesElement.style.display = 'none';
       this.showingTemplates = false;
     }
+    // 保存模板容器引用
+    this.templatesContainer = templatesElement;
     
     // 组装所有元素
-    this.element.appendChild(this.templatesElement);
+    this.element.appendChild(templatesElement);
     this.element.appendChild(inputArea);
-    this.element.appendChild(this.translateWarningElement);
-    this.element.appendChild(this.historyElement);
+    this.element.appendChild(this.translateWarning.getElement());
+    this.element.appendChild(this.promptHistory.getElement());
     
     // 添加到父元素
     if (this.options.parentElement) {
@@ -141,7 +112,7 @@ class PromptInput {
     
     // 初始化模板组件
     this.promptTemplates = new PromptTemplates({
-      parentElement: this.templatesElement,
+      parentElement: templatesElement,
       onSelectTemplate: (template) => this.insertTemplate(template),
       onSelectTag: (tag) => this.insertTag(tag)
     });
@@ -217,165 +188,6 @@ class PromptInput {
         border-color: var(--primary-color, #4f46e5);
         box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2);
       }
-      
-      .prompt-toolbar {
-        position: absolute;
-        bottom: 8px;
-        right: 8px;
-        display: flex;
-        gap: 4px;
-        align-items: center;
-      }
-      
-      .prompt-tool-btn {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 28px;
-        height: 28px;
-        border: none;
-        background-color: transparent;
-        border-radius: 4px;
-        cursor: pointer;
-        padding: 0;
-        color: var(--text-secondary, #4b5563);
-        transition: all 0.2s;
-      }
-      
-      .prompt-tool-btn:hover {
-        background-color: var(--bg-secondary, #f9fafb);
-        color: var(--primary-color, #4f46e5);
-      }
-      
-      .prompt-tool-btn.active {
-        color: var(--primary-color, #4f46e5);
-        background-color: var(--bg-secondary, #f9fafb);
-      }
-      
-      .prompt-history {
-        margin-top: 8px;
-        border: 1px solid var(--border-color, #e5e7eb);
-        border-radius: 6px;
-        max-height: 150px;
-        overflow-y: auto;
-      }
-      
-      .prompt-history-item {
-        padding: 8px 12px;
-        cursor: pointer;
-        border-bottom: 1px solid var(--border-color, #e5e7eb);
-        font-size: 13px;
-        color: var(--text-primary, #111827);
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        transition: all 0.2s;
-      }
-      
-      .prompt-history-item:last-child {
-        border-bottom: none;
-      }
-      
-      .prompt-history-item:hover {
-        background-color: var(--bg-secondary, #f9fafb);
-      }
-      
-      .prompt-history-empty {
-        padding: 12px;
-        text-align: center;
-        color: var(--text-secondary, #4b5563);
-        font-size: 13px;
-        font-style: italic;
-      }
-      
-      .translate-warning {
-        margin-top: 8px;
-        padding: 8px 12px;
-        background-color: #fff8e6;
-        border: 1px solid #ffeeba;
-        border-radius: 6px;
-        color: #856404;
-        font-size: 13px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-      }
-      
-      .translate-warning .warning-icon {
-        flex-shrink: 0;
-        color: #f0ad4e;
-      }
-      
-      .translate-warning .warning-text {
-        flex: 1;
-      }
-      
-      .translate-warning .translate-buttons {
-        display: flex;
-        gap: 8px;
-      }
-      
-      .translate-warning .translate-btn {
-        background-color: #007bff;
-        color: white;
-        border: none;
-        border-radius: 4px;
-        padding: 4px 8px;
-        font-size: 12px;
-        cursor: pointer;
-        transition: all 0.2s;
-      }
-      
-      .translate-warning .translate-btn:hover {
-        background-color: #0069d9;
-      }
-      
-      .translate-warning .ignore-btn {
-        background-color: #6c757d;
-        color: white;
-        border: none;
-        border-radius: 4px;
-        padding: 4px 8px;
-        font-size: 12px;
-        cursor: pointer;
-        transition: all 0.2s;
-      }
-      
-      .translate-warning .ignore-btn:hover {
-        background-color: #5a6268;
-      }
-      
-      .translated-text {
-        margin-top: 8px;
-        padding: 8px 12px;
-        background-color: #e6f7ff;
-        border: 1px solid #b3e0ff;
-        border-radius: 6px;
-        color: #0056b3;
-        font-size: 13px;
-      }
-      
-      .translated-text .translated-content {
-        font-weight: 500;
-        margin-top: 4px;
-      }
-      
-      .translated-text .use-translation-btn {
-        margin-top: 6px;
-        background-color: #007bff;
-        color: white;
-        border: none;
-        border-radius: 4px;
-        padding: 4px 8px;
-        font-size: 12px;
-        cursor: pointer;
-        transition: all 0.2s;
-      }
-      
-      .translated-text .use-translation-btn:hover {
-        background-color: #0069d9;
-      }
     `;
     
     document.head.appendChild(style);
@@ -392,63 +204,9 @@ class PromptInput {
     this.inputContainsChinese = chineseRegex.test(value);
     
     if (this.inputContainsChinese) {
-      this.showTranslateWarning();
+      this.translateWarning.show();
     } else {
-      this.hideTranslateWarning();
-    }
-  }
-  
-  /**
-   * 显示翻译警告
-   */
-  showTranslateWarning() {
-    if (!this.translateWarningElement) return;
-    
-    this.translateWarningElement.innerHTML = '';
-    
-    const warningIcon = document.createElement('div');
-    warningIcon.className = 'warning-icon';
-    warningIcon.innerHTML = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-        <line x1="12" y1="9" x2="12" y2="13"></line>
-        <line x1="12" y1="17" x2="12.01" y2="17"></line>
-      </svg>
-    `;
-    
-    const warningText = document.createElement('div');
-    warningText.className = 'warning-text';
-    warningText.textContent = '检测到中文输入！大多数AI绘图模型对英文理解更好，建议转换为英文后提交。';
-    
-    const buttonsWrapper = document.createElement('div');
-    buttonsWrapper.className = 'translate-buttons';
-    
-    const translateBtn = document.createElement('button');
-    translateBtn.className = 'translate-btn';
-    translateBtn.textContent = '翻译为英文';
-    translateBtn.addEventListener('click', () => this.translateInput());
-    
-    const ignoreBtn = document.createElement('button');
-    ignoreBtn.className = 'ignore-btn';
-    ignoreBtn.textContent = '忽略';
-    ignoreBtn.addEventListener('click', () => this.hideTranslateWarning());
-    
-    buttonsWrapper.appendChild(translateBtn);
-    buttonsWrapper.appendChild(ignoreBtn);
-    
-    this.translateWarningElement.appendChild(warningIcon);
-    this.translateWarningElement.appendChild(warningText);
-    this.translateWarningElement.appendChild(buttonsWrapper);
-    
-    this.translateWarningElement.style.display = 'flex';
-  }
-  
-  /**
-   * 隐藏翻译警告
-   */
-  hideTranslateWarning() {
-    if (this.translateWarningElement) {
-      this.translateWarningElement.style.display = 'none';
+      this.translateWarning.hide();
     }
   }
   
@@ -459,17 +217,7 @@ class PromptInput {
     const inputText = this.getValue();
     
     // 显示加载状态
-    if (this.translateWarningElement) {
-      const warningText = this.translateWarningElement.querySelector('.warning-text');
-      if (warningText) {
-        warningText.textContent = '正在翻译...';
-      }
-      
-      const buttonsWrapper = this.translateWarningElement.querySelector('.translate-buttons');
-      if (buttonsWrapper) {
-        buttonsWrapper.style.display = 'none';
-      }
-    }
+    this.translateWarning.setTranslating(true);
     
     try {
       // 调用翻译服务
@@ -479,25 +227,13 @@ class PromptInput {
       this.setValue(translatedText);
       
       // 隐藏翻译警告
-      this.hideTranslateWarning();
+      this.translateWarning.hide();
       
       // 添加到历史记录（可选）
-      // this.addToHistory(translatedText);
+      // this.promptHistory.addItem(translatedText);
     } catch (error) {
       console.error('翻译失败:', error);
-      
-      // 恢复警告文本
-      if (this.translateWarningElement) {
-        const warningText = this.translateWarningElement.querySelector('.warning-text');
-        if (warningText) {
-          warningText.textContent = '翻译失败！请重试或手动翻译。';
-        }
-        
-        const buttonsWrapper = this.translateWarningElement.querySelector('.translate-buttons');
-        if (buttonsWrapper) {
-          buttonsWrapper.style.display = 'flex';
-        }
-      }
+      this.translateWarning.setError('翻译失败！请重试或手动翻译。');
     }
   }
   
@@ -522,8 +258,8 @@ class PromptInput {
     
     if (this.options.detectChinese && this.inputContainsChinese) {
       // 如果包含中文且没有显示过提醒，则显示提醒
-      if (this.translateWarningElement.style.display === 'none') {
-        this.showTranslateWarning();
+      if (!this.translateWarning.isVisible()) {
+        this.translateWarning.show();
         return; // 显示警告后先不提交
       }
     }
@@ -535,126 +271,15 @@ class PromptInput {
   }
   
   /**
-   * 加载历史提示词
-   */
-  loadHistory() {
-    try {
-      const savedHistory = localStorage.getItem(this.options.storageKey);
-      if (savedHistory) {
-        this.history = JSON.parse(savedHistory);
-      }
-    } catch (error) {
-      console.error('加载提示词历史记录失败:', error);
-      this.history = [];
-    }
-  }
-  
-  /**
-   * 保存历史提示词
-   */
-  saveHistory() {
-    try {
-      localStorage.setItem(this.options.storageKey, JSON.stringify(this.history));
-    } catch (error) {
-      console.error('保存提示词历史记录失败:', error);
-    }
-  }
-  
-  /**
-   * 添加提示词到历史记录
-   * @param {string} prompt 提示词
-   */
-  addToHistory(prompt) {
-    if (!prompt || prompt.trim() === '') return;
-    
-    // 移除相同的历史记录
-    this.history = this.history.filter(item => item !== prompt);
-    
-    // 添加到历史开头
-    this.history.unshift(prompt);
-    
-    // 限制历史记录数量
-    if (this.history.length > this.options.maxHistory) {
-      this.history = this.history.slice(0, this.options.maxHistory);
-    }
-    
-    // 保存历史记录
-    this.saveHistory();
-    
-    // 刷新历史面板
-    this.refreshHistoryPanel();
-  }
-  
-  /**
-   * 刷新历史面板
-   */
-  refreshHistoryPanel() {
-    if (!this.historyElement) return;
-    
-    this.historyElement.innerHTML = '';
-    
-    if (this.history.length === 0) {
-      const emptyEl = document.createElement('div');
-      emptyEl.className = 'prompt-history-empty';
-      emptyEl.textContent = '暂无历史提示词';
-      this.historyElement.appendChild(emptyEl);
-      return;
-    }
-    
-    this.history.forEach((prompt, index) => {
-      const item = document.createElement('div');
-      item.className = 'prompt-history-item';
-      item.textContent = prompt;
-      item.title = prompt;
-      item.dataset.index = index;
-      
-      item.addEventListener('click', () => {
-        this.setValue(prompt);
-        this.hideHistoryPanel();
-      });
-      
-      this.historyElement.appendChild(item);
-    });
-  }
-  
-  /**
-   * 切换历史面板显示状态
-   */
-  toggleHistoryPanel() {
-    if (this.historyElement.style.display === 'none') {
-      this.showHistoryPanel();
-    } else {
-      this.hideHistoryPanel();
-    }
-  }
-  
-  /**
-   * 显示历史面板
-   */
-  showHistoryPanel() {
-    this.historyElement.style.display = 'block';
-  }
-  
-  /**
-   * 隐藏历史面板
-   */
-  hideHistoryPanel() {
-    this.historyElement.style.display = 'none';
-  }
-  
-  /**
    * 切换模板面板显示状态
    */
   toggleTemplates() {
     this.showingTemplates = !this.showingTemplates;
-    this.templatesElement.style.display = this.showingTemplates ? 'block' : 'none';
+    const templatesElement = this.templatesContainer;
+    templatesElement.style.display = this.showingTemplates ? 'block' : 'none';
     
     // 更新按钮状态
-    if (this.showingTemplates) {
-      this.templatesToggleBtn.classList.add('active');
-    } else {
-      this.templatesToggleBtn.classList.remove('active');
-    }
+    this.promptToolbar.setTemplatesActive(this.showingTemplates);
   }
   
   /**
@@ -721,7 +346,7 @@ class PromptInput {
    */
   clearInput() {
     this.setValue('');
-    this.hideTranslateWarning();
+    this.translateWarning.hide();
     this.inputElement.focus();
   }
   
@@ -730,6 +355,14 @@ class PromptInput {
    */
   submit() {
     this.submitWithChineseCheck();
+  }
+  
+  /**
+   * 添加提示词到历史记录
+   * @param {string} prompt 提示词
+   */
+  addToHistory(prompt) {
+    this.promptHistory.addItem(prompt);
   }
 }
 
