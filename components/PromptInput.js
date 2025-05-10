@@ -3,7 +3,7 @@
  * 提供输入框、历史提示词和快捷操作
  */
 import PromptTemplates from './PromptTemplates.js';
-
+import translationService from './TranslationService.js';
 class PromptInput {
   constructor(options = {}) {
     this.options = Object.assign({
@@ -13,7 +13,8 @@ class PromptInput {
       onSubmit: null,
       storageKey: 'promptHistory',
       parentElement: document.body,
-      showTemplates: true
+      showTemplates: true,
+      detectChinese: true  // 是否检测中文并提供翻译提醒
     }, options);
     
     this.history = [];
@@ -22,9 +23,11 @@ class PromptInput {
     this.historyElement = null;
     this.templatesElement = null;
     this.templatesToggleBtn = null;
+    this.translateWarningElement = null;
     this.currentHistoryIndex = -1;
     this.promptTemplates = null;
     this.showingTemplates = true;
+    this.inputContainsChinese = false;
     
     this.init();
   }
@@ -106,6 +109,11 @@ class PromptInput {
     inputArea.appendChild(this.inputElement);
     inputArea.appendChild(toolbar);
     
+    // 创建翻译提醒区域
+    this.translateWarningElement = document.createElement('div');
+    this.translateWarningElement.className = 'translate-warning';
+    this.translateWarningElement.style.display = 'none';
+    
     // 创建历史面板
     this.historyElement = document.createElement('div');
     this.historyElement.className = 'prompt-history';
@@ -123,6 +131,7 @@ class PromptInput {
     // 组装所有元素
     this.element.appendChild(this.templatesElement);
     this.element.appendChild(inputArea);
+    this.element.appendChild(this.translateWarningElement);
     this.element.appendChild(this.historyElement);
     
     // 添加到父元素
@@ -147,6 +156,10 @@ class PromptInput {
   setupEventListeners() {
     // 输入框内容变化事件
     this.inputElement.addEventListener('input', () => {
+      if (this.options.detectChinese) {
+        this.checkForChineseCharacters();
+      }
+      
       if (typeof this.options.onChange === 'function') {
         this.options.onChange(this.getValue());
       }
@@ -157,9 +170,7 @@ class PromptInput {
       // 如果按下Ctrl+Enter键
       if (e.key === 'Enter' && e.ctrlKey) {
         e.preventDefault();
-        if (typeof this.options.onSubmit === 'function') {
-          this.options.onSubmit(this.getValue());
-        }
+        this.submitWithChineseCheck();
       }
     });
   }
@@ -276,9 +287,251 @@ class PromptInput {
         font-size: 13px;
         font-style: italic;
       }
+      
+      .translate-warning {
+        margin-top: 8px;
+        padding: 8px 12px;
+        background-color: #fff8e6;
+        border: 1px solid #ffeeba;
+        border-radius: 6px;
+        color: #856404;
+        font-size: 13px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      
+      .translate-warning .warning-icon {
+        flex-shrink: 0;
+        color: #f0ad4e;
+      }
+      
+      .translate-warning .warning-text {
+        flex: 1;
+      }
+      
+      .translate-warning .translate-buttons {
+        display: flex;
+        gap: 8px;
+      }
+      
+      .translate-warning .translate-btn {
+        background-color: #007bff;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        padding: 4px 8px;
+        font-size: 12px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      
+      .translate-warning .translate-btn:hover {
+        background-color: #0069d9;
+      }
+      
+      .translate-warning .ignore-btn {
+        background-color: #6c757d;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        padding: 4px 8px;
+        font-size: 12px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      
+      .translate-warning .ignore-btn:hover {
+        background-color: #5a6268;
+      }
+      
+      .translated-text {
+        margin-top: 8px;
+        padding: 8px 12px;
+        background-color: #e6f7ff;
+        border: 1px solid #b3e0ff;
+        border-radius: 6px;
+        color: #0056b3;
+        font-size: 13px;
+      }
+      
+      .translated-text .translated-content {
+        font-weight: 500;
+        margin-top: 4px;
+      }
+      
+      .translated-text .use-translation-btn {
+        margin-top: 6px;
+        background-color: #007bff;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        padding: 4px 8px;
+        font-size: 12px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      
+      .translated-text .use-translation-btn:hover {
+        background-color: #0069d9;
+      }
     `;
     
     document.head.appendChild(style);
+  }
+  
+  /**
+   * 检查文本中是否包含中文字符
+   */
+  checkForChineseCharacters() {
+    const value = this.getValue();
+    // 使用正则表达式检查中文字符
+    // 匹配中文字符的正则表达式
+    const chineseRegex = /[\u4e00-\u9fa5]/;
+    this.inputContainsChinese = chineseRegex.test(value);
+    
+    if (this.inputContainsChinese) {
+      this.showTranslateWarning();
+    } else {
+      this.hideTranslateWarning();
+    }
+  }
+  
+  /**
+   * 显示翻译警告
+   */
+  showTranslateWarning() {
+    if (!this.translateWarningElement) return;
+    
+    this.translateWarningElement.innerHTML = '';
+    
+    const warningIcon = document.createElement('div');
+    warningIcon.className = 'warning-icon';
+    warningIcon.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+        <line x1="12" y1="9" x2="12" y2="13"></line>
+        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+      </svg>
+    `;
+    
+    const warningText = document.createElement('div');
+    warningText.className = 'warning-text';
+    warningText.textContent = '检测到中文输入！大多数AI绘图模型对英文理解更好，建议转换为英文后提交。';
+    
+    const buttonsWrapper = document.createElement('div');
+    buttonsWrapper.className = 'translate-buttons';
+    
+    const translateBtn = document.createElement('button');
+    translateBtn.className = 'translate-btn';
+    translateBtn.textContent = '翻译为英文';
+    translateBtn.addEventListener('click', () => this.translateInput());
+    
+    const ignoreBtn = document.createElement('button');
+    ignoreBtn.className = 'ignore-btn';
+    ignoreBtn.textContent = '忽略';
+    ignoreBtn.addEventListener('click', () => this.hideTranslateWarning());
+    
+    buttonsWrapper.appendChild(translateBtn);
+    buttonsWrapper.appendChild(ignoreBtn);
+    
+    this.translateWarningElement.appendChild(warningIcon);
+    this.translateWarningElement.appendChild(warningText);
+    this.translateWarningElement.appendChild(buttonsWrapper);
+    
+    this.translateWarningElement.style.display = 'flex';
+  }
+  
+  /**
+   * 隐藏翻译警告
+   */
+  hideTranslateWarning() {
+    if (this.translateWarningElement) {
+      this.translateWarningElement.style.display = 'none';
+    }
+  }
+  
+  /**
+   * 尝试翻译输入内容
+   */
+  async translateInput() {
+    const inputText = this.getValue();
+    
+    // 显示加载状态
+    if (this.translateWarningElement) {
+      const warningText = this.translateWarningElement.querySelector('.warning-text');
+      if (warningText) {
+        warningText.textContent = '正在翻译...';
+      }
+      
+      const buttonsWrapper = this.translateWarningElement.querySelector('.translate-buttons');
+      if (buttonsWrapper) {
+        buttonsWrapper.style.display = 'none';
+      }
+    }
+    
+    try {
+      // 调用翻译服务
+      const translatedText = await translationService.translate(inputText);
+      
+      // 直接设置翻译结果到输入框
+      this.setValue(translatedText);
+      
+      // 隐藏翻译警告
+      this.hideTranslateWarning();
+      
+      // 添加到历史记录（可选）
+      // this.addToHistory(translatedText);
+    } catch (error) {
+      console.error('翻译失败:', error);
+      
+      // 恢复警告文本
+      if (this.translateWarningElement) {
+        const warningText = this.translateWarningElement.querySelector('.warning-text');
+        if (warningText) {
+          warningText.textContent = '翻译失败！请重试或手动翻译。';
+        }
+        
+        const buttonsWrapper = this.translateWarningElement.querySelector('.translate-buttons');
+        if (buttonsWrapper) {
+          buttonsWrapper.style.display = 'flex';
+        }
+      }
+    }
+  }
+  
+  /**
+   * 显示翻译结果 - 不再需要此功能，但保留方法以避免引用错误
+   * @param {string} originalText 原始文本
+   */
+  showTranslationResults(originalText) {
+    // 此方法不再使用，但保留以防其他地方有引用
+    console.log('showTranslationResults方法已弃用');
+  }
+  
+  /**
+   * 检查中文并提交
+   */
+  submitWithChineseCheck() {
+    const value = this.getValue();
+    
+    if (value.trim() === '') {
+      return;
+    }
+    
+    if (this.options.detectChinese && this.inputContainsChinese) {
+      // 如果包含中文且没有显示过提醒，则显示提醒
+      if (this.translateWarningElement.style.display === 'none') {
+        this.showTranslateWarning();
+        return; // 显示警告后先不提交
+      }
+    }
+    
+    // 如果不包含中文或用户已经看到了警告，则直接提交
+    if (typeof this.options.onSubmit === 'function') {
+      this.options.onSubmit(value);
+    }
   }
   
   /**
@@ -411,6 +664,7 @@ class PromptInput {
   insertTemplate(template) {
     this.setValue(template);
     this.inputElement.focus();
+    this.checkForChineseCharacters(); // 检查是否包含中文
   }
   
   /**
@@ -430,6 +684,8 @@ class PromptInput {
       this.inputElement.focus();
       this.inputElement.setSelectionRange(cursorPos + tag.length, cursorPos + tag.length);
     }, 0);
+    
+    this.checkForChineseCharacters(); // 检查是否包含中文
   }
   
   /**
@@ -439,6 +695,11 @@ class PromptInput {
   setValue(value) {
     if (!this.inputElement) return;
     this.inputElement.value = value;
+    
+    // 检查是否包含中文
+    if (this.options.detectChinese) {
+      this.checkForChineseCharacters();
+    }
     
     // 触发onChange事件
     if (typeof this.options.onChange === 'function') {
@@ -460,6 +721,7 @@ class PromptInput {
    */
   clearInput() {
     this.setValue('');
+    this.hideTranslateWarning();
     this.inputElement.focus();
   }
   
@@ -467,14 +729,7 @@ class PromptInput {
    * 提交当前输入
    */
   submit() {
-    const value = this.getValue();
-    if (value.trim() !== '') {
-      this.addToHistory(value);
-      
-      if (typeof this.options.onSubmit === 'function') {
-        this.options.onSubmit(value);
-      }
-    }
+    this.submitWithChineseCheck();
   }
 }
 
