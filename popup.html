@@ -397,6 +397,14 @@
       padding: 20px 0;
       font-style: italic;
     }
+    
+    /* 提示词输入区域标题 */
+    .prompt-section-title {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-primary);
+      margin: 0 0 8px 0;
+    }
   </style>
 </head>
 <body>
@@ -427,9 +435,9 @@
         <!-- 服务商选择器将由JavaScript动态添加 -->
       </div>
       
-      <div class="form-group">
-        <label for="prompt">提示词</label>
-        <textarea id="prompt" placeholder="输入提示词或使用页面选择的文本"></textarea>
+      <div class="prompt-section">
+        <h3 class="prompt-section-title">提示词</h3>
+        <div id="promptInputContainer"></div>
       </div>
       
       <div class="actions">

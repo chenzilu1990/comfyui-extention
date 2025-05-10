@@ -1,16 +1,17 @@
 // 导入API服务
 import { PROVIDER_CONFIG, sendToComfyUI, sendToImageProvider } from './ApiService.js';
+import PromptInput from './components/PromptInput.js';
 
 document.addEventListener('DOMContentLoaded', function() {
+  console.log('popup.js loaded');
   // 获取DOM元素
-  // const endpointInput = document.getElementById('endpoint'); // 已移至设置页面
-  const promptInput = document.getElementById('prompt');
   const generateBtn = document.getElementById('generate');
   const openSettingsBtn = document.getElementById('openSettings');
   const statusEl = document.getElementById('status');
   const resultEl = document.getElementById('result');
   const historyContainerEl = document.getElementById('historyContainer');
   const clearHistoryBtn = document.getElementById('clearHistory');
+  const promptInputContainer = document.getElementById('promptInputContainer');
   
   // 添加服务商选择器
   const providerSelectorContainer = document.querySelector('.provider-selector');
@@ -36,6 +37,25 @@ document.addEventListener('DOMContentLoaded', function() {
   // 历史记录数据
   let imageHistory = [];
   const MAX_HISTORY_ITEMS = 30; // 最多保存的历史记录数
+  
+  // 初始化提示词输入组件
+  const promptInput = new PromptInput({
+    placeholder: '输入提示词...',
+    parentElement: promptInputContainer,
+    maxHistory: 10,
+    storageKey: 'promptInputHistory',
+    onChange: (value) => {
+      // 可以在这里添加额外的操作，如字数统计等
+      console.log('提示词更新:', value);
+    },
+    onSubmit: (value) => {
+      // 当用户按下Ctrl+Enter时触发生成
+      console.log('提示词提交:', value);
+      if (value.trim() !== '') {
+        generateImage(value);
+      }
+    }
+  });
 
   // 加载保存的设置
   function loadSettings() {
@@ -151,11 +171,9 @@ document.addEventListener('DOMContentLoaded', function() {
     resultEl.innerHTML = '';
   }
 
-  // 生成图像
-  generateBtn.addEventListener('click', async function() {
-    const prompt = promptInput.value.trim();
-    
-    if (!prompt) {
+  // 生成图像函数
+  async function generateImage(promptText) {
+    if (!promptText || promptText.trim() === '') {
       showStatus('请输入提示词', 'error');
       return;
     }
@@ -166,20 +184,23 @@ document.addEventListener('DOMContentLoaded', function() {
     showStatus('正在生成图像...', 'success');
     
     try {
+      // 把提示词保存到输入组件的历史中
+      promptInput.addToHistory(promptText);
+      
       // 根据选择的服务商执行不同的生成逻辑
       if (currentProvider === 'comfyui') {
         // 使用ComfyUI
-        await sendToComfyUI(currentEndpoint, currentWorkflowId, prompt, [], showStatus, imageUrl => {
+        await sendToComfyUI(currentEndpoint, currentWorkflowId, promptText, [], showStatus, imageUrl => {
           displayGeneratedImage(imageUrl);
-          saveToHistory(imageUrl, prompt);
+          saveToHistory(imageUrl, promptText);
         });
       } else {
         // 使用其他文生图服务商
         const provider = availableProviders.find(p => p.id === currentProvider);
         if (provider && provider.settings) {
-          await sendToImageProvider(currentProvider, provider.settings, prompt, null, showStatus, imageUrl => {
+          await sendToImageProvider(currentProvider, provider.settings, promptText, null, showStatus, imageUrl => {
             displayGeneratedImage(imageUrl);
-            saveToHistory(imageUrl, prompt);
+            saveToHistory(imageUrl, promptText);
           });
         } else {
           showStatus(`未找到${currentProvider}的设置信息`, 'error');
@@ -188,6 +209,12 @@ document.addEventListener('DOMContentLoaded', function() {
     } catch (error) {
       showStatus(`生成图像时出错: ${error.message}`, 'error');
     }
+  }
+
+  // 生成图像按钮事件
+  generateBtn.addEventListener('click', function() {
+    const promptText = promptInput.getValue();
+    generateImage(promptText);
   });
 
   // 显示生成的图像
@@ -294,7 +321,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // 显示该历史记录的图像
         displayGeneratedImage(selectedItem.url);
         // 在提示词输入框中填入该历史记录的提示词
-        promptInput.value = selectedItem.prompt;
+        promptInput.setValue(selectedItem.prompt);
       });
     });
   }
